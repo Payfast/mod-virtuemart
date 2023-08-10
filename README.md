@@ -23,3 +23,5 @@ follow the instructions below:
     “Yes”
 11. To use the modle in live mode enter your Payfast merchant ID and Key, and, if necessary, passphrase. Change sandbox
     to "No" and click save 
+
+Please [click here](https://payfast.io/integration/shopping-carts/virtuemart/) for more information concerning this module.
