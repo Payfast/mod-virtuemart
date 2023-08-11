@@ -5,7 +5,7 @@ code in your own website in conjunction with a registered and active Payfast acc
 terminated for any reason, you may not use this plugin / code or part thereof. Except as expressly indicated in this
 licence, you may not use, copy, modify or distribute this plugin / code or part thereof in any way.
 
-INTEGRATION:
+Installation
 
 This module is currently working with Joomla 3.10* and using Virtuemart 4.0.* To install the Payfast payment module,
 follow the instructions below:
