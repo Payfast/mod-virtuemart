@@ -3,32 +3,43 @@
 /**
  * payfast.php
  *
- * Copyright (c) 2023 PayFast (Pty) Ltd
- * You (being anyone who is not PayFast (Pty) Ltd) may download and use this plugin / code in your own website in conjunction with a registered and active Payfast account. If your Payfast account is terminated for any reason, you may not use this plugin / code or part thereof.
- * Except as expressly indicated in this licence, you may not use, copy, modify or distribute this plugin / code or part thereof in any way.
+ * Copyright (c) 2024 Payfast (Pty) Ltd
+ * You (being anyone who is not Payfast (Pty) Ltd) may download and use this plugin / code in your own website in
+ * conjunction with a registered and active Payfast account. If your Payfast account is terminated for any reason,
+ * you may not use this plugin / code or part thereof.
+ * Except as expressly indicated in this licence, you may not use, copy, modify or distribute this plugin / code
+ * or part thereof in any way.
  *
- * @author      PayFast (Pty) Ltd
+ * @author      Payfast (Pty) Ltd
  * @link        https://payfast.io/integration/shopping-carts/virtuemart/
- * @version     1.5.1
+ * @version     1.5.2
  */
 
-defined('_JEXEC') or die('Direct Access to ' . basename(__FILE__) . ' is not allowed.');
+use Joomla\CMS\Factory;
+use Joomla\Database\DatabaseInterface;
+
+defined('_JEXEC') or die('Restricted access');
 if (!class_exists('vmPSPlugin')) {
-    require(JPATH_VM_PLUGINS . DS . 'vmpsplugin.php');
+    require JPATH_VM_PLUGINS . DS . 'vmpsplugin.php';
 }
 
-define('SANDBOX_MERCHANT_ID', '10000100');
-define('SANDBOX_MERCHANT_KEY', '46f0cd694581a');
+const SANDBOX_MERCHANT_ID = '10000100';
+const SANDBOX_MERCHANT_KEY = '46f0cd694581a';
 const PF_ORDER = 'orders.php';
-class plgVMPaymentPayfast extends vmPSPlugin
-{
-    // Instance of class
 
-    function __construct(&$subject, $config)
+class plgVmPaymentPayfast extends vmPSPlugin
+{
+    /**
+     * @param $subject
+     * @param $config
+     */
+    public function __construct(&$subject, $config)
     {
         parent::__construct($subject, $config);
         $this->_loggable = true;
         $this->tableFields = array_keys($this->getTableSQLFields());
+        $this->_tablepkey = 'id';
+        $this->_tableId = 'id';
         $varsToPush = array(
             'payfast_merchant_key' => array('', 'char'),
             'payfast_merchant_id' => array('', 'char'),
@@ -49,18 +60,22 @@ class plgVMPaymentPayfast extends vmPSPlugin
             'cost_percent_total' => array(0, 'int'),
             'tax_id' => array(0, 'int')
         );
+        $this->addVarsToPushCore($varsToPush, 1);
         $this->setConfigParameterable($this->_configTableFieldName, $varsToPush);
     }
 
-    function getTableSQLFields()
+    /**
+     * @return string[]
+     */
+    public function getTableSQLFields(): array
     {
         return array(
             'id' => 'int(11) UNSIGNED NOT NULL AUTO_INCREMENT',
             'virtuemart_order_id' => ' int(11) UNSIGNED',
             'order_number' => ' char(32)',
             'virtuemart_paymentmethod_id' => ' mediumint(1) UNSIGNED',
-            'payment_name' => ' char(255) NOT NULL DEFAULT \'\' ',
-            'payment_order_total' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
+            'payment_name' => 'VARCHAR(75) NOT NULL DEFAULT "Payfast"',
+            'payment_order_total' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\'',
             'payment_currency' => 'char(3) ',
             'cost_per_transaction' => ' decimal(10,2)',
             'cost_percent_total' => ' decimal(10,2)',
@@ -70,10 +85,16 @@ class plgVMPaymentPayfast extends vmPSPlugin
         );
     }
 
-    function plgVmConfirmedOrder($cart, $order)
+    /**
+     * @param $cart
+     * @param $order
+     * @return bool|null
+     * @throws Exception
+     */
+    public function plgVmConfirmedOrder($cart, $order): ?bool
     {
         // Include Payfast Common File
-        require_once("payfast_common.inc");
+        require_once "payfast_common.inc";
 
         $retvar = null;
 
@@ -82,22 +103,27 @@ class plgVMPaymentPayfast extends vmPSPlugin
         } elseif (!$this->selectedThisElement($method->payment_element)) {
             $retvar = false;
         } else {
-            $session = JFactory::getSession();
+            $session = Factory::getApplication()->getSession();
             $return_context = $session->getId();
             $this->_debug = $method->debug;
             $this->logInfo('plgVmConfirmedOrder order number: ' . $order['details']['BT']->order_number, 'message');
             if (!class_exists('VirtueMartModelOrders')) {
-                require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
+                require JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER;
             }
             if (!class_exists('VirtueMartModelCurrency')) {
-                require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'currency.php');
+                require JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'currency.php';
+            }
+
+            $dbValues['payment_name'] = $this->renderPluginName($method);
+            if (!empty($method->payment_info)) {
+                $dbValues['payment_name'] .= '<br />' . $method->payment_info;
             }
 
             $new_status = '';
             $vendorModel = new VirtueMartModelVendor();
             $vendorModel->setId(1);
             $this->getPaymentCurrency($method);
-            $db = &JFactory::getDBO();
+            $db = Factory::getContainer()->get(DatabaseInterface::class);
             $q = 'SELECT `currency_code_3` FROM `#__virtuemart_currencies` WHERE `virtuemart_currency_id`="'
                 . $db->quote($method->payment_currency) . '" ';
             $db->setQuery($q);
@@ -121,13 +147,21 @@ class plgVMPaymentPayfast extends vmPSPlugin
                     'merchant_id' => $payfastDetails['merchant_id'],
                     'merchant_key' => $payfastDetails['merchant_key'],
                     'return_url' => JROUTE::_(
-                        JURI::root() . 'index.php?option=com_virtuemart&view=vmplg&task=pluginresponsereceived&pm=' . $order['details']['BT']->virtuemart_paymentmethod_id . "&o_id={$order['details']['BT']->order_number}"
+                        JURI::root() .
+                        'index.php?option=com_virtuemart&view=vmplg&task=pluginresponsereceived&pm=' .
+                        $order['details']['BT']->virtuemart_paymentmethod_id .
+                        "&o_id={$order['details']['BT']->order_number}"
                     ),
                     'cancel_url' => JROUTE::_(
-                        JURI::root() . 'index.php?option=com_virtuemart&view=vmplg&task=pluginUserPaymentCancel&on=' . $order['details']['BT']->order_number . '&pm=' . $order['details']['BT']->virtuemart_paymentmethod_id
+                        JURI::root() . 'index.php?option=com_virtuemart&view=vmplg&task=pluginUserPaymentCancel&on=' .
+                        $order['details']['BT']->order_number . '&pm=' .
+                        $order['details']['BT']->virtuemart_paymentmethod_id
                     ),
                     'notify_url' => JROUTE::_(
-                        JURI::root() . 'index.php?option=com_virtuemart&view=vmplg&task=pluginnotification&tmpl=component&on=' . $order['details']['BT']->order_number . '&pm=' . $order['details']['BT']->virtuemart_paymentmethod_id . "&XDEBUG_SESSION_START=session_name" . "&o_id={$order['details']['BT']->order_number}"
+                        JURI::root() . 'index.php?option=com_virtuemart&view=vmplg&task=pluginnotification&tmpl=component&on=' .
+                        $order['details']['BT']->order_number . '&pm=' .
+                        $order['details']['BT']->virtuemart_paymentmethod_id . "&XDEBUG_SESSION_START=session_name" .
+                        "&o_id={$order['details']['BT']->order_number}"
                     ),
 
                     // User details
@@ -148,7 +182,7 @@ class plgVMPaymentPayfast extends vmPSPlugin
 
                 );
                 $pfOutput = '';
-// Create output string
+                // Create output string
                 foreach ($post_variables as $key => $val) {
                     $pfOutput .= $key . '=' . urlencode(trim($val)) . '&';
                 }
@@ -161,7 +195,7 @@ class plgVMPaymentPayfast extends vmPSPlugin
                 }
 
                 $post_variables['signature'] = md5($pfOutput);
-// Prepare data that should be stored in the database
+                // Prepare data that should be stored in the database
                 $dbValues['order_number'] = $order['details']['BT']->order_number;
                 $dbValues['payment_name'] = $this->renderPluginName($method, $order);
                 $dbValues['virtuemart_paymentmethod_id'] = $cart->virtuemart_paymentmethod_id;
@@ -173,7 +207,9 @@ class plgVMPaymentPayfast extends vmPSPlugin
                 $dbValues['tax_id'] = $method->tax_id;
                 $this->storePSPluginInternalData($dbValues);
                 $html = '<form action="' . $payfastDetails['url'] . '" method="post" name="vm_payfast_form" >';
-                $html .= '<input type="image" name="submit" src="images/stories/virtuemart/payment/payfast.svg" alt="Click to pay with Payfast" style="width: 122px;vertical-align: middle;"/>';
+                $html .= '<input type="image" name="submit"
+ src="images/stories/virtuemart/payment/payfast.svg" alt="Click to pay with Payfast"
+  style="width: 122px;vertical-align: middle;"/>';
                 foreach ($post_variables as $name => $value) {
                     $html .= '<input type="hidden" name="' . $name . '" value="' . htmlspecialchars($value) . '" />';
                 }
@@ -181,15 +217,19 @@ class plgVMPaymentPayfast extends vmPSPlugin
                 $html .= ' <script type="text/javascript">';
                 $html .= ' document.vm_payfast_form.submit();';
                 $html .= ' </script>';
-//     2 = don't delete the cart, don't send email and don't redirect
-                $retvar = $this->processConfirmedOrderPaymentResponse(2, $cart, $order, $html, $new_status);
+                // 2 = don't delete the cart, don't send email and don't redirect
+                $this->processConfirmedOrderPaymentResponse(2, $cart, $order, $html, $new_status);
             }
         }
 
         return $retvar;
     }
 
-    function _getPayfastDetails($method)
+    /**
+     * @param $method
+     * @return array
+     */
+    public function _getPayfastDetails($method): array
     {
         if ($method->sandbox) {
             $sandBoxMerchantId = empty($method->payfast_merchant_id)
@@ -214,11 +254,16 @@ class plgVMPaymentPayfast extends vmPSPlugin
         return $payfastDetails;
     }
 
-    function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
+    /**
+     * @param $virtuemart_paymentmethod_id
+     * @param $paymentCurrencyId
+     * @return false|void|null
+     */
+    public function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
     {
         if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
             return null;
-// Another method was selected, do nothing
+            // Another method was selected, do nothing
         }
         if (!$this->selectedThisElement($method->payment_element)) {
             return false;
@@ -228,10 +273,16 @@ class plgVMPaymentPayfast extends vmPSPlugin
         $paymentCurrencyId = $method->payment_currency;
     }
 
-    function plgVmOnPaymentResponseReceived(&$html)
+    /**
+     * @param $html
+     * @return bool|null
+     * @throws Exception
+     */
+    public function plgVmOnPaymentResponseReceived(&$html): ?bool
     {
         // the payment itself should send the parameter needed.
-        $virtuemart_paymentmethod_id = JRequest::getInt('pm', 0);
+        $payment_data = Factory::getApplication()->input->getArray();
+        $virtuemart_paymentmethod_id = $payment_data['pm'] ?? 0;
         if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
             return null;
             // Another method was selected, do nothing
@@ -241,26 +292,24 @@ class plgVMPaymentPayfast extends vmPSPlugin
             return false;
         }
 
-        $payment_data = JRequest::get('get');
         vmdebug('plgVmOnPaymentResponseReceived', $payment_data);
         $order_number = $payment_data['o_id'];
         if (!class_exists('VirtueMartModelOrders')) {
-            require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
+            require JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER;
         }
 
         $virtuemart_order_id = VirtueMartModelOrders::getOrderIdByOrderNumber($order_number);
-        $payment_name = $this->renderPluginName($method);
-        $html = $this->_getPaymentResponseHtml($payment_data, $payment_name);
+        $html = $this->getPaymentResponseHtml();
         if ($virtuemart_order_id) {
             if (!class_exists('VirtueMartCart')) {
-                require(JPATH_VM_SITE . DS . 'helpers' . DS . 'cart.php');
+                require JPATH_VM_SITE . DS . 'helpers' . DS . 'cart.php';
             }
 
             // get the correct cart / session
             $cart = VirtueMartCart::getCart();
             // send the email ONLY if payment has been accepted
             if (!class_exists('VirtueMartModelOrders')) {
-                require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
+                require JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER;
             }
 
             $cart->emptyCart();
@@ -269,68 +318,83 @@ class plgVMPaymentPayfast extends vmPSPlugin
         return true;
     }
 
-    function _getPaymentResponseHtml($payfastData, $payment_name)
+    /**
+     * @return string
+     */
+    private function getPaymentResponseHtml(): string
     {
         return "";
     }
 
-    function plgVmOnUserPaymentCancel()
+    /**
+     * @return bool|null
+     */
+    public function plgVmOnUserPaymentCancel()
     {
-        if (!class_exists('VirtueMartModelOrders')) {
-            require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
-        }
-
-        $order_number = JRequest::getVar('on');
-        if (!$order_number) {
-            return false;
-        }
-
-        $db = JFactory::getDBO();
-        $query = 'SELECT ' . $this->_tablename . '.`virtuemart_order_id` FROM ' . $this->_tablename . '
-                  WHERE  `order_number`= ' . $db->quote($order_number) . '';
-        $db->setQuery($query);
-        $virtuemart_order_id = $db->loadResult();
-        if (!$virtuemart_order_id) {
+        $paymentData = JFactory::getApplication()->input->getArray();
+        $virtuemartPaymentmethodId = $paymentData['pm'];
+        $orderNumber = $paymentData['on'];
+        if (!($method = $this->getVmPluginMethod($virtuemartPaymentmethodId))) {
             return null;
+            // Another method was selected, do nothing
         }
 
-        $this->handlePaymentUserCancel($virtuemart_order_id);
+        $virtuemartOrderId = \VirtueMartModelOrders::getOrderIdByOrderNumber($orderNumber);
+        $payment = $this->getDataByOrderId($virtuemartOrderId);
+        $paymentFields = json_decode(json_encode($payment), true);
+        $paymentFields['paygate_response'] = 'User cancelled';
+        $paymentFields['paygate_response_payment_date'] = date('Y-m-d H:i:s');
+
+        $this->storePSPluginInternalData($paymentFields);
+        $orderModel = new \VirtueMartModelOrders();
+        $order['virtuemart_order_id'] = $virtuemartOrderId;
+        $order['order_status'] = $method->status_canceled;
+        $order['customer_notified'] = 0;
+        $order['comments'] = 'The transaction was cancelled by the user';
+
+        VmInfo(vmText::_('VMPAYMENT_PAYFAST_PAYMENT_CANCELLED'));
+        try {
+            $orderModel->updateStatusForOneOrder($virtuemartOrderId, $order, TRUE);
+        } catch (Exception $e) {
+            $this->logInfo('Email sending error: ' . $e->getMessage(), 'ERROR');
+        }
 
         return true;
     }
 
-    function plgVmOnPaymentNotification()
+    /**
+     * @return bool|void|null
+     */
+    public function plgVmOnPaymentNotification()
     {
         if (!class_exists('VirtueMartModelOrders')) {
-            require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
+            require JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER;
         }
 
         // Include Payfast Common File
-        require_once("payfast_common.inc");
-// Variable Initialization
+        require_once "payfast_common.inc";
+
+        // Variable Initialization
         $pfError = false;
         $pfErrMsg = '';
-        $pfDone = false;
         $pfData = array();
         $pfParamString = '';
-//// Notify Payfast that information has been received
-        if (!$pfError && !$pfDone) {
-            header('HTTP/1.0 200 OK');
-            flush();
+
+        // Notify Payfast that information has been received
+        header('HTTP/1.0 200 OK');
+        flush();
+
+        // Get data sent by Payfast
+        pflog('Get posted data');
+        // Posted variables from ITN
+        $pfData = pfGetData();
+        $payfast_data = $pfData;
+        pflog('Payfast Data: ' . print_r($pfData, true));
+        if ($pfData === false) {
+            $pfError = true;
+            $pfErrMsg = PF_ERR_BAD_ACCESS;
         }
 
-        //// Get data sent by Payfast
-        if (!$pfError && !$pfDone) {
-            pflog('Get posted data');
-// Posted variables from ITN
-            $pfData = pfGetData();
-            $payfast_data = $pfData;
-            pflog('Payfast Data: ' . print_r($pfData, true));
-            if ($pfData === false) {
-                $pfError = true;
-                $pfErrMsg = PF_ERR_BAD_ACCESS;
-            }
-        }
         $order_number = $payfast_data['m_payment_id'];
         $virtuemart_order_id = VirtueMartModelOrders::getOrderIdByOrderNumber($payfast_data['m_payment_id']);
         $this->logInfo('plgVmOnPaymentNotification: virtuemart_order_id  found ' . $virtuemart_order_id, 'message');
@@ -338,8 +402,6 @@ class plgVMPaymentPayfast extends vmPSPlugin
             $this->_debug = true;
             // force debug here
             $this->logInfo('plgVmOnPaymentNotification: virtuemart_order_id not found ', 'ERROR');
-            // send an email to admin, and ofc not update the order status: exit  is fine
-            //$this->sendEmailToVendorAndAdmins(JText::_('VMPAYMENT_PAYFAST_ERROR_EMAIL_SUBJECT'), JText::_('VMPAYMENT_PAYFAST_UNKNOWN_ORDER_ID'));
             exit;
         }
 
@@ -359,20 +421,20 @@ class plgVMPaymentPayfast extends vmPSPlugin
         }
         $this->logInfo('payfast_data ' . implode('   ', $payfast_data), 'message');
         pflog('Payfast ITN call received');
-//// Verify security signature
-        if (!$pfError && !$pfDone) {
+        // Verify security signature
+        if (!$pfError) {
             pflog('Verify security signature');
             $passPhrase = $method->payfast_passphrase;
             $pfPassPhrase = empty($passPhrase) ? null : $passPhrase;
-// If signature different, log for debugging
+            // If signature different, log for debugging
             if (!pfValidSignature($pfData, $pfParamString, $pfPassPhrase)) {
                 $pfError = true;
                 $pfErrMsg = PF_ERR_INVALID_SIGNATURE;
             }
         }
 
-        //// Verify source IP (If not in debug mode)
-        if (!$pfError && !$pfDone && !PF_DEBUG) {
+        // Verify source IP (If not in debug mode)
+        if (!$pfError && !PF_DEBUG) {
             pflog('Verify source IP');
             if (!pfValidIP($_SERVER['REMOTE_ADDR'])) {
                 $pfError = true;
@@ -380,7 +442,7 @@ class plgVMPaymentPayfast extends vmPSPlugin
             }
         }
 
-        //// Verify data received
+        // Verify data received
         if (!$pfError) {
             pflog('Verify data received');
             $pfValid = pfValidData($pfHost, $pfParamString);
@@ -390,35 +452,30 @@ class plgVMPaymentPayfast extends vmPSPlugin
             }
         }
 
-        //// Check data against internal order
-        if (!$pfError && !$pfDone && !pfAmountsEqual($pfData['amount_gross'], $payment->payment_order_total)) {
+        // Check data against internal order
+        if (!$pfError && !pfAmountsEqual($pfData['amount_gross'], $payment->payment_order_total)) {
             $pfError = true;
             $pfErrMsg = PF_ERR_AMOUNT_MISMATCH;
         }
 
-        //// Check status and update order
-        if (!$pfError && !$pfDone) {
+        // Check status and update order
+        if (!$pfError) {
             pflog('Check status and update order');
             switch ($pfData['payment_status']) {
                 case 'COMPLETE':
                     pflog('- Complete');
                     $new_status = $method->status_success;
-
                     break;
                 case 'FAILED':
                     pflog('- Failed');
                     $new_status = $method->status_canceled;
-
                     break;
                 case 'PENDING':
                     pflog('- Pending');
                     // Need to wait for "Completed" before processing
-
                     break;
                 default:
                     // If unknown status, do nothing (safest course of action)
-
-
                     break;
             }
         }
@@ -437,7 +494,7 @@ class plgVMPaymentPayfast extends vmPSPlugin
         $response_fields['cost_per_transaction'] = $payment->cost_per_transaction;
         $response_fields['cost_percent_total'] = $payment->cost_percent_total;
         $response_fields['payment_currency'] = $payment->payment_currency;
-        $response_fields['payment_order_total'] = $totalInPaymentCurrency;
+        $response_fields['payment_order_total'] = $payment->payment_order_total;
         $response_fields['tax_id'] = $method->tax_id;
         $response_fields['payfast_response'] = $pfData['payment_status'];
         $response_fields['payfast_response_payment_date'] = date('Y-m-d H:i:s');
@@ -446,36 +503,51 @@ class plgVMPaymentPayfast extends vmPSPlugin
         if ($virtuemart_order_id && $pfData['payment_status'] == 'COMPLETE') {
             // send the email only if payment has been accepted
             if (!class_exists('VirtueMartModelOrders')) {
-                require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
+                require JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER;
             }
 
+            $isEmailSet = empty($pfData['email_address']) ? 0 : 1;
             $modelOrder = new VirtueMartModelOrders();
             $order['order_status'] = $new_status;
             $order['virtuemart_order_id'] = $virtuemart_order_id;
-            $order['customer_notified'] = 1;
-            $order['comments'] = JTExt::sprintf('VMPAYMENT_PAYFAST_PAYMENT_CONFIRMED', $order_number);
-            $modelOrder->updateStatusForOneOrder($virtuemart_order_id, $order, true);
+            $order['customer_notified'] = $isEmailSet;
+            $order['comments'] = JTExt::sprintf(
+                'VMPAYMENT_PAYFAST_PAYMENT_CONFIRMED',
+                $order_number,
+                $payfast_data['pf_payment_id']
+            );
+
+            try {
+                $modelOrder->updateStatusForOneOrder($virtuemart_order_id, $order);
+            } catch (Exception $e) {
+                JFactory::getApplication()->enqueueMessage(
+                    'An error occurred while sending the email: '
+                    . $e->getMessage(), 'ERROR'
+                );
+                $this->logInfo('Email sending error: ' . $e->getMessage(), 'ERROR');
+            }
         }
 
-        $this->emptyCart($return_context);
-// Close log
+        // Close log
         pflog('', true);
 
         return true;
     }
 
+
     /**
-     * Display stored payment data for an order
-     * @see components/com_virtuemart/helpers/vmPSPlugin::plgVmOnShowOrderBEPayment()
+     * @param $virtuemart_order_id
+     * @param $payment_method_id
+     * @return string|null
      */
-    function plgVmOnShowOrderBEPayment($virtuemart_order_id, $payment_method_id)
+    public function plgVmOnShowOrderBEPayment($virtuemart_order_id, $payment_method_id): ?string
     {
         if (!$this->selectedThisByMethodId($payment_method_id)) {
             return null;
-// Another method was selected, do nothing
+            // Another method was selected, do nothing
         }
 
-        $db = JFactory::getDBO();
+        $db = Factory::getContainer()->get(DatabaseInterface::class);
         $q = 'SELECT * FROM `' . $this->_tablename . '` '
             . 'WHERE `virtuemart_order_id` = ' . $db->quote($virtuemart_order_id);
         $db->setQuery($q);
@@ -486,37 +558,33 @@ class plgVMPaymentPayfast extends vmPSPlugin
         $this->getPaymentCurrency($paymentTable);
         $q = 'SELECT `currency_code_3` FROM `#__virtuemart_currencies` WHERE `virtuemart_currency_id`="'
             . $db->quote($paymentTable->payment_currency) . '" ';
-        $db = &JFactory::getDBO();
+        $db = Factory::getContainer()->get(DatabaseInterface::class);
         $db->setQuery($q);
         $html = '<table class="adminlist">' . "\n";
         $html .= $this->getHtmlHeaderBE();
-        $html .= $this->getHtmlRowBE('payfast_PAYMENT_NAME', $paymentTable->payment_name);
+        $html .= $this->getHtmlRowBE('COM_VIRTUEMART_PAYMENT_NAME', $paymentTable->payment_name);
         $code = "payfast_response_";
         foreach ($paymentTable as $key => $value) {
             if (substr($key, 0, strlen($code)) == $code) {
                 $html .= $this->getHtmlRowBE($key, $value);
             }
         }
-        return $html .= '</table>' . "\n";
+        $html .= '</table>' . "\n";
 
+        return $html;
     }
-
-    /*
-     *   plgVmOnPaymentNotification() - This event is fired by Offline Payment. It can be used to validate the payment data as entered by the user.
-     * Return:
-     * Parameters:
-     *  None
-     *  @author Valerie Isaksen
-     */
 
     /**
      * Create the table for this plugin if it does not yet exist.
      * This functions checks if the called plugin is active one.
      * When yes it is calling the standard method to create the tables
-     * @author Valérie Isaksen
      *
+     * @param $jplugin_id
+     *
+     * @return bool|null
+     * @author Valérie Isaksen
      */
-    function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
+    public function plgVmOnStoreInstallPaymentPluginTable($jplugin_id): ?bool
     {
         return $this->onStoreInstallPluginTable($jplugin_id);
     }
@@ -533,7 +601,7 @@ class plgVMPaymentPayfast extends vmPSPlugin
      * @author Valérie isaksen
      *
      */
-    public function plgVmOnSelectCheckPayment(VirtueMartCart $cart)
+    public function plgVmOnSelectCheckPayment(VirtueMartCart $cart, &$msg)
     {
         return $this->OnSelectCheck($cart);
     }
@@ -542,21 +610,39 @@ class plgVMPaymentPayfast extends vmPSPlugin
      * plgVmDisplayListFEPayment
      * This event is fired to display the pluginmethods in the cart (edit shipment/payment) for exampel
      *
-     * @param object $cart Cart object
+     * @param VirtueMartCart $cart Cart object
      * @param integer $selected ID of the method selected
-     *
-     * @return boolean True on succes, false on failures, null when this plugin was not selected.
+     * @param $htmlIn
+     * @return boolean True on success, false on failures, null when this plugin was not selected.
      * On errors, JError::raiseWarning (or JError::raiseError) must be used to set a message.
      *
      * @author Valerie Isaksen
      * @author Max Milbers
      */
-    public function plgVmDisplayListFEPayment(VirtueMartCart $cart, $selected = 0, &$htmlIn)
+    public function plgVmDisplayListFEPayment(VirtueMartCart $cart, int $selected, &$htmlIn): bool
     {
+        if (isset($_POST['virtuemart_paymentmethod_id'])) {
+            $selected = (int)htmlspecialchars($_POST['virtuemart_paymentmethod_id']);
+        }
+        if (isset($this->methods) && (int)$this->methods[0]->virtuemart_paymentmethod_id === $selected) {
+            $cart->cartData['paymentName'] = "Payfast";
+        }
+
         return $this->displayListFE($cart, $selected, $htmlIn);
     }
 
-    public function plgVmonSelectedCalculatePricePayment(VirtueMartCart $cart, array &$cart_prices, &$cart_prices_name)
+
+    /**
+     * @param VirtueMartCart $cart
+     * @param array $cart_prices
+     * @param $cart_prices_name
+     * @return bool|null
+     */
+    public function plgVmOnSelectedCalculatePricePayment(
+        VirtueMartCart $cart,
+        array          &$cart_prices,
+                       &$cart_prices_name
+    ): ?bool
     {
         return $this->onSelectedCalculatePrice($cart, $cart_prices, $cart_prices_name);
     }
@@ -566,56 +652,45 @@ class plgVMPaymentPayfast extends vmPSPlugin
      * Checks how many plugins are available. If only one, the user will not have the choice. Enter edit_xxx page
      * The plugin must check first if it is the correct type
      *
-     * @param VirtueMartCart cart: the cart object
+     * @param VirtueMartCart $cart cart: the cart object
      *
-     * @return null if no plugin was found, 0 if more then one plugin was found,  virtuemart_xxx_id if only one plugin is found
+     * @return null if no plugin was found, 0 if more than one plugin was found,
+     *  virtuemart_xxx_id if only one plugin is found
      *
      * @author Valerie Isaksen
      */
-    function plgVmOnCheckAutomaticSelectedPayment(VirtueMartCart $cart, array $cart_prices = array())
+    public function plgVmOnCheckAutomaticSelectedPayment(VirtueMartCart $cart, array $cart_prices = array())
     {
         return $this->onCheckAutomaticSelected($cart, $cart_prices);
     }
-
-    /*
-     * plgVmonSelectedCalculatePricePayment
-     * Calculate the price (value, tax_id) of the selected method
-     * It is called by the calculator
-     * This function does NOT to be reimplemented. If not reimplemented, then the default values from this function are taken.
-     * @author Valerie Isaksen
-     * @cart: VirtueMartCart the current cart
-     * @cart_prices: array the new cart prices
-     * @return null if the method was not selected, false if the shiiping rate is not valid any more, true otherwise
-     *
-     *
-     */
 
     /**
      * This method is fired when showing the order details in the frontend.
      * It displays the method-specific data.
      *
-     * @param integer $order_id The order ID
-     *
-     * @return mixed Null for methods that aren't active, text (HTML) otherwise
+     * @param $virtuemart_order_id
+     * @param $virtuemart_paymentmethod_id
+     * @param $payment_name
+     * @return void
      * @author Max Milbers
      * @author Valerie Isaksen
      */
-    public function plgVmOnShowOrderFEPayment($virtuemart_order_id, $virtuemart_paymentmethod_id, &$payment_name)
+    public function plgVmOnShowOrderFEPayment($virtuemart_order_id, $virtuemart_paymentmethod_id, &$payment_name): void
     {
         $this->onShowOrderFE($virtuemart_order_id, $virtuemart_paymentmethod_id, $payment_name);
     }
 
     /**
-     * This method is fired when showing when priting an Order
-     * It displays the the payment method-specific data.
+     * This method is fired when showing when printing an Order
+     * It displays the payment method-specific data.
      *
-     * @param integer $_virtuemart_order_id The order ID
+     * @param $order_number
      * @param integer $method_id method used for this order
      *
      * @return mixed Null when for payment methods that were not selected, text (HTML) otherwise
      * @author Valerie Isaksen
      */
-    function plgVmonShowOrderPrintPayment($order_number, $method_id)
+    public function plgVmonShowOrderPrintPayment($order_number, $method_id): mixed
     {
         return $this->onShowOrderPrint($order_number, $method_id);
     }
@@ -625,32 +700,50 @@ class plgVMPaymentPayfast extends vmPSPlugin
      * It can be used to display line specific package codes, e.g. with a link to external tracking and
      * tracing systems
      *
-     * @param integer $_orderId The order ID
-     * @param integer $_lineId
-     *
-     * @return mixed Null for method that aren't active, text (HTML) otherwise
+     * @param $name
+     * @param $id
+     * @param $data
+     * @return bool
      * @author Oscar van Eijk
      *
      * public function plgVmOnShowOrderLineFE(  $_orderId, $_lineId) {
      * return null;
      * }
      */
-    function plgVmDeclarePluginParamsPayment($name, $id, &$data)
+    public function plgVmDeclarePluginParamsPayment($name, $id, &$data): bool
     {
         return $this->declarePluginParams('payment', $name, $id, $data);
     }
 
-    function plgVmDeclarePluginParamsPaymentVM3(&$data)
+    /**
+     * @param $data
+     * @return bool
+     */
+    public function plgVmDeclarePluginParamsPaymentVM3(&$data): bool
     {
         return $this->declarePluginParams('payment', $data);
     }
 
-    function plgVmGetTablePluginParams($psType, $name, $id, &$xParams, &$varsToPush)
+    /**
+     * @param $psType
+     * @param $name
+     * @param $id
+     * @param $xParams
+     * @param $varsToPush
+     * @return bool
+     */
+    public function plgVmGetTablePluginParams($psType, $name, $id, &$xParams, &$varsToPush): bool
     {
         return $this->getTablePluginParams($psType, $name, $id, $xParams, $varsToPush);
     }
 
-    function plgVmSetOnTablePluginParamsPayment($name, $id, &$table)
+    /**
+     * @param $name
+     * @param $id
+     * @param $table
+     * @return bool
+     */
+    public function plgVmSetOnTablePluginParamsPayment($name, $id, &$table): bool
     {
         return $this->setOnTablePluginParams($name, $id, $table);
     }
@@ -658,15 +751,14 @@ class plgVMPaymentPayfast extends vmPSPlugin
     /**
      * Check if the payment conditions are fulfilled for this payment method
      *
+     * @param $cart
+     * @param $method
      * @param $cart_prices : cart prices
-     * @param $payment
-     *
-     * @return true: if the conditions are fulfilled, false otherwise
+     * @return bool: if the conditions are fulfilled, false otherwise
      *
      * @author: Valerie Isaksen
-     *
      */
-    protected function checkConditions($cart, $method, $cart_prices)
+    protected function checkConditions($cart, $method, $cart_prices): bool
     {
         $address = (($cart->ST == 0) ? $cart->BT : $cart->ST);
         $amount = $cart_prices['salesPrice'];
@@ -697,7 +789,10 @@ class plgVMPaymentPayfast extends vmPSPlugin
         return false;
     }
 
-    protected function getVmPluginCreateTableSQL()
+    /**
+     * @return string
+     */
+    protected function getVmPluginCreateTableSQL(): string
     {
         return $this->createTableSQL('Payment Payfast Table');
     }
