@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--Copyright (c) 2025 Payfast (Pty) Ltd
+You (being anyone who is not Payfast (Pty) Ltd) may download and use this plugin / code in your own website in
+conjunction with a registered and active Payfast account. If your Payfast account is terminated for any reason,
+you may not use this plugin / code or part thereof.
+Except as expressly indicated in this licence, you may not use, copy, modify or distribute this plugin / code
+or part thereof in any way.-->
+<extension version="2.5" type="plugin" group="vmpayment" method="upgrade">
+    <name>VM Payment - Payfast</name>
+    <creationDate>24 January 2023</creationDate>
+    <author>Payfast (Pty) Ltd</author>
+    <authorUrl>https://payfast.io</authorUrl>
+    <copyright>Copyright (C) 2024 Payfast. All rights reserved.</copyright>
+    <license>http://www.gnu.org/licenses/gpl-3.0.html GNU/GPL</license>
+    <version>1.6.0</version>
+    <description><![CDATA[<a href="https://payfast.io" target="_blank">Payfast</a> ]]></description>
+    <files>
+        <filename plugin="payfast">payfast.php</filename>
+        <filename>composer.json</filename>
+        <folder>language</folder>
+        <folder>vendor</folder>
+        <folder>images</folder>
+        <filename>index.html</filename>
+        <folder>language</folder>
+    </files>
+    <vmconfig>
+        <fields name="params">
+            <fieldset name="payment" addfieldpath="/plugins/vmpayment/payfast/payfast/fields">
+                <field name="checkConditionsCore" value="1" default="1" type="hidden"/>
+                <field type="spacer" default="VMPAYMENT_PAYFAST_FIELDS" level="level1"/>
+                <field type="text" name="payfast_merchant_id" size="50" label="VMPAYMENT_PAYFAST_MERCHANT_ID"
+                       default="" description="VMPAYMENT_PAYFAST_MERCHANT_ID_DESC"/>
+                <field type="text" name="payfast_merchant_key" size="50" label="VMPAYMENT_PAYFAST_MERCHANT_KEY"
+                       default="" description="VMPAYMENT_PAYFAST_MERCHANT_KEY_DESC"/>
+                <field type="text" name="payfast_passphrase" size="50" label="VMPAYMENT_PAYFAST_PASSPHRASE"
+                       default="" description="VMPAYMENT_PAYFAST_PASSPHRASE_DESC"/>
+                <field type="spacer" default="VMPAYMENT_PAYFAST_SANDBOX_FIELDS" level="level1"/>
+                <field name="sandbox" type="radio" default="1" label="VMPAYMENT_PAYFAST_SANDBOX"
+                       description="VMPAYMENT_PAYFAST_SANDBOX_DESC">
+                    <option value="0">COM_VIRTUEMART_NO</option>
+                    <option value="1">COM_VIRTUEMART_YES</option>
+                </field>
+                <field type="spacer" default="VMPAYMENT_PAYFAST_VIRTUEMART_FIELDS" level="level1"/>
+                <field name="status_pending" type="vmorderstate" scope="com_virtuemart" default="P"
+                       label="VMPAYMENT_PAYFAST_STATUS_PENDING" description="VMPAYMENT_PAYFAST_STATUS_PENDING_EXPLAIN"/>
+                <field name="status_success" type="vmorderstate" scope="com_virtuemart" default="C"
+                       label="VMPAYMENT_PAYFAST_STATUS_SUCCESS" description="VMPAYMENT_PAYFAST_STATUS_SUCCESS_EXPLAIN"/>
+                <field name="status_canceled" type="vmorderstate" scope="com_virtuemart" default="X"
+                       label="VMPAYMENT_PAYFAST_STATUS_FAILED" description="VMPAYMENT_PAYFAST_STATUS_FAILED_EXPLAIN"/>
+                <field name="countries" type="vmcountries" scope="com_virtuemart" default=""
+                       label="VMPAYMENT_PAYFAST_COUNTRIES" description="VMPAYMENT_PAYFAST_COUNTRIES_DESC"/>
+                <field name="min_amount" type="text" label="VMPAYMENT_PAYFAST_MIN_AMOUNT"
+                       description="VMPAYMENT_PAYFAST_MIN_AMOUNT_EXPLAIN"/>
+                <field name="max_amount" type="text" label="VMPAYMENT_PAYFAST_MAX_AMOUNT"
+                       description="VMPAYMENT_PAYFAST_MAX_AMOUNT_EXPLAIN"/>
+                <field name="payment_tax_id" type="vmtaxes" scope="com_virtuemart" label="VMPAYMENT_PAYFAST_TAX"
+                       description="VMPAYMENT_PAYFAST_TAX_EXPLAIN"/>
+            </fieldset>
+        </fields>
+    </vmconfig>
+    <media folder="images" destination="../images/stories/virtuemart/payment">
+        <filename>payfast.svg</filename>
+    </media>
+</extension>
