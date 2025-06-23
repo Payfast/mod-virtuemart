@@ -1,6 +1,6 @@
 # mod-virtuemart
 
-## Payfast module v1.5.2 for VirtueMart v4.2.4
+## Payfast module v1.6.0 for VirtueMart v4.4.4
 
 This is the Payfast module for VirtueMart. Please feel free
 to [contact the Payfast support team](https://payfast.io/contact/) should you require any assistance.
@@ -8,7 +8,8 @@ to [contact the Payfast support team](https://payfast.io/contact/) should you re
 ## Installation
 
 1. Login to your Joomla backend and navigate to the Joomla Extension manager.
-3. Select the Payfast zipfile (mod-virtuemart_4.zip) and install it.
+3. Select [vmpayment.zip](https://github.com/Payfast/mod-virtuemart/releases/download/v1.6.0/vmpayment.zip) and install
+   it.
 4. Still in the Extension Manager of Joomla, click on **Manage**.
 5. Search for the Payfast module, and activate it.
 6. Using the main menu, navigate to **Components** -> **VirtueMart**.
